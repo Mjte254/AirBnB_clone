@@ -1,291 +1,176 @@
-#!/usr/bin/python
-"""
-Module for console
-"""
+#!/usr/bin/python3
+"""Command Interpreter - Console"""
+
 import cmd
-import re
-import shlex
-import ast
-from models import storage
-from models.base_model import BaseModel
-from models.user import User
-from models.amenity import Amenity
-from models.place import Place
-from models.review import Review
-from models.state import State
-from models.city import City
-
-
-def split_curly_braces(e_arg):
-    """
-    Splits the curly braces for the update method
-    """
-    curly_braces = re.search(r"\{(.*?)\}", e_arg)
-
-    if curly_braces:
-        id_with_comma = shlex.split(e_arg[:curly_braces.span()[0]])
-        id = [i.strip(",") for i in id_with_comma][0]
-
-        str_data = curly_braces.group(1)
-        try:
-            arg_dict = ast.literal_eval("{" + str_data + "}")
-        except Exception:
-            print("**  invalid dictionary format **")
-            return
-        return id, arg_dict
-    else:
-        commands = e_arg.split(",")
-        if commands:
-            try:
-                id = commands[0]
-            except Exception:
-                return "", ""
-            try:
-                attr_name = commands[1]
-            except Exception:
-                return id, ""
-            try:
-                attr_value = commands[2]
-            except Exception:
-                return id, attr_name
-            return f"{id}", f"{attr_name} {attr_value}"
+import models
 
 
 class HBNBCommand(cmd.Cmd):
     """
-    HBNBCommand console class
+    class HBNBCommand - console for the AirBnB clone
+        Note: "help <cmd>" functionality is provided by cmd module
+    Usage:
+        create [class=BaseModel]
+        show [class=BaseModel [id=12234-1234-1234]]
+        destroy [class=BaseModel] [id=1234-1234-1234]
+        all | all [class=BaseModel]
+        update [class=BaseModel] [id=1234-1234-1234] [key] [value]
     """
-    prompt = "(hbnb) "
-    valid_classes = ["BaseModel", "User", "Amenity",
-                     "Place", "Review", "State", "City"]
+    # ----- basic AirBnB clone commands -----
+    def do_quit(self, args):
+        """Quit command to exit the program
+        """
+        raise SystemExit
+
+    def do_EOF(self, args):
+        """EOF command to exit the program
+        """
+        raise SystemExit
 
     def emptyline(self):
-        """
-        Do nothing when an empty line is entered.
+        """Do nothing on empty input line
         """
         pass
 
-    def do_EOF(self, arg):
-        """
-        EOF (Ctrl+D) signal to exit the program.
-        """
-        return True
-
-    def do_quit(self, arg):
-        """
-        Quit command to exit the program.
-        """
-        return True
-
+    # ----- basic Console CRUD commands -----
     def do_create(self, arg):
-        """
-        Create a new instance of BaseModel and save it to the JSON file.
-        Usage: create <class_name>
-        """
-        commands = shlex.split(arg)
-
-        if len(commands) == 0:
+        """Create BaseModel instance, saves to JSON file, prints ID"""
+        if len(arg) == 0:
             print("** class name missing **")
-        elif commands[0] not in self.valid_classes:
-            print("** class doesn't exist **")
+            return
+        if arg in models.types:
+            obj = models.types[arg]()
+            obj.save()
+            print(obj.id)
+            models.count[obj.__class__.__name__] += 1
         else:
-            new_instance = eval(f"{commands[0]}()")
-            storage.save()
-            print(new_instance.id)
+            print("** class doesn't exist **")
 
     def do_show(self, arg):
-        """
-        Show the string representation of an instance.
-        Usage: show <class_name> <id>
-        """
-        commands = shlex.split(arg)
-
-        if len(commands) == 0:
+        """Show class object with ID"""
+        input = arg.split()
+        if len(arg) == 0:
             print("** class name missing **")
-        elif commands[0] not in self.valid_classes:
-            print("** class doesn't exist **")
-        elif len(commands) < 2:
+            return
+        elif len(input) == 1:
             print("** instance id missing **")
-        else:
-            objects = storage.all()
-
-            key = "{}.{}".format(commands[0], commands[1])
-            if key in objects:
-                print(objects[key])
+            return
+        if input[0] in models.types:
+            allObjs = models.storage.all()
+            realID = input[0] + "." + input[1]
+            if realID in allObjs:
+                print(allObjs[realID])
             else:
                 print("** no instance found **")
+        else:
+            print("** class doesn't exist **")
 
     def do_destroy(self, arg):
-        """
-        Delete an instance based on the class name and id.
-        Usage: destroy <class_name> <id>
-        """
-        commands = shlex.split(arg)
-
-        if len(commands) == 0:
+        """Destroy an object"""
+        input = arg.split()
+        if len(input) == 2:
+            realID = input[0] + "." + input[1]
+        allObjs = models.storage.all()
+        if len(arg) == 0:
             print("** class name missing **")
-        elif commands[0] not in self.valid_classes:
-            print("** class doesn't exist **")
-        elif len(commands) < 2:
+            return
+        elif len(input) == 1:
             print("** instance id missing **")
-        else:
-            objects = storage.all()
-            key = "{}.{}".format(commands[0], commands[1])
-            if key in objects:
-                del objects[key]
-                storage.save()
+            return
+        if input[0] in models.types:
+            if realID in allObjs:
+                allObjs.pop(realID)
+                models.count[input[0]] -= 1
+                models.storage.save()
             else:
                 print("** no instance found **")
+        else:
+            print("** class doesn't exist **")
 
     def do_all(self, arg):
-        """
-        Print the string representation of all instances or a specific class.
-        Usage: <User>.all()
-                <User>.show()
-        """
-        objects = storage.all()
-
-        commands = shlex.split(arg)
-
-        if len(commands) == 0:
-            for key, value in objects.items():
-                print(str(value))
-        elif commands[0] not in self.valid_classes:
+        """Show all objects"""
+        input = arg.split()
+        allObjs = models.storage.all()
+        str = "["
+        if len(arg) == 0:
+            for k in allObjs:
+                str = str + allObjs[k].__str__() + ', '
+            str = str[:-2] + ']'
+            print(str)
+        elif (len(input) == 1 and input[0] in models.types):
+            for k in allObjs:
+                if input[0] in k:
+                    str = str + allObjs[k].__str__() + ', '
+            str = str[:-2] + ']'
+            print(str)
+        else:
             print("** class doesn't exist **")
-        else:
-            for key, value in objects.items():
-                if key.split('.')[0] == commands[0]:
-                    print(str(value))
 
-    def do_count(self, arg):
+    def do_update(self, args, **kwargs):
+        """Update obj atribute with info
         """
-        Counts and retrieves the number of instances of a class
-        usage: <class name>.count()
-        """
-        objects = storage.all()
-
-        commands = shlex.split(arg)
-
-        if arg:
-            cls_nm = commands[0]
-
-        count = 0
-
-        if commands:
-            if cls_nm in self.valid_classes:
-                for obj in objects.values():
-                    if obj.__class__.__name__ == cls_nm:
-                        count += 1
-                print(count)
+        if args:
+            args = args.split()
+            argsize = len(args)
+            if argsize >= 2:
+                ID = args[0] + "." + args[1]
             else:
-                print("** invalid class name **")
-        else:
-            print("** class name missing **")
-
-    def do_update(self, arg):
-        """
-        Update an instance by adding or updating an attribute.
-        Usage: update <class_name> <id> <attribute_name> "<attribute_value>"
-        """
-        commands = shlex.split(arg)
-
-        if len(commands) == 0:
-            print("** class name missing **")
-        elif commands[0] not in self.valid_classes:
-            print("** class doesn't exist **")
-        elif len(commands) < 2:
-            print("** instance id missing **")
-        else:
-            objects = storage.all()
-
-            key = "{}.{}".format(commands[0], commands[1])
-            if key not in objects:
-                print("** no instance found **")
-            elif len(commands) < 3:
-                print("** attribute name missing **")
-            elif len(commands) < 4:
-                print("** value missing **")
-            else:
-                obj = objects[key]
-                curly_braces = re.search(r"\{(.*?)\}", arg)
-
-                if curly_braces:
-                    try:
-                        str_data = curly_braces.group(1)
-
-                        arg_dict = ast.literal_eval("{" + str_data + "}")
-
-                        attribute_names = list(arg_dict.keys())
-                        attribute_values = list(arg_dict.values())
-                        try:
-                            attr_name1 = attribute_names[0]
-                            attr_value1 = attribute_values[0]
-                            setattr(obj, attr_name1, attr_value1)
-                        except Exception:
-                            pass
-                        try:
-                            attr_name2 = attribute_names[1]
-                            attr_value2 = attribute_values[1]
-                            setattr(obj, attr_name2, attr_value2)
-                        except Exception:
-                            pass
-                    except Exception:
-                        pass
-                else:
-
-                    attr_name = commands[2]
-                    attr_value = commands[3]
-
-                    try:
-                        attr_value = eval(attr_value)
-                    except Exception:
-                        pass
-                    setattr(obj, attr_name, attr_value)
-
-                obj.save()
-
-    def default(self, arg):
-        """
-        Default behavior for cmd module when input is invalid
-        """
-        arg_list = arg.split('.')
-
-        cls_nm = arg_list[0]  # incoming class name
-
-        command = arg_list[1].split('(')
-
-        cmd_met = command[0]  # incoming command method
-
-        e_arg = command[1].split(')')[0]  # extra arguments
-
-        method_dict = {
-                'all': self.do_all,
-                'show': self.do_show,
-                'destroy': self.do_destroy,
-                'update': self.do_update,
-                'count': self.do_count
-                }
-
-        if cmd_met in method_dict.keys():
-            if cmd_met != "update":
-                return method_dict[cmd_met]("{} {}".format(cls_nm, e_arg))
-            else:
-                if not cls_nm:
+                if argsize == 1:
+                    print("** instance id missing **")
+                elif argsize == 0:
                     print("** class name missing **")
+                return
+        try:
+            d = models.storage.all()[ID].to_dict()
+            if kwargs:
+                d.update(kwargs)
+            else:
+                if argsize == 2:
+                    print("** attribute name missing **")
                     return
-                try:
-                    obj_id, arg_dict = split_curly_braces(e_arg)
-                except Exception:
-                    pass
-                try:
-                    call = method_dict[cmd_met]
-                    return call("{} {} {}".format(cls_nm, obj_id, arg_dict))
-                except Exception:
-                    pass
-        else:
-            print("*** Unknown syntax: {}".format(arg))
-            return False
+                for i in range(0, argsize, 2):
+                    if i >= 2:
+                        args[i] = args[i].strip(':')
+                        args[i] = args[i].strip('"')
+                        try:
+                            args[i+1] = args[i+1].strip('"')
+                            d[args[i]] = args[i+1]
+                        except:
+                            print("** value missing **")
+                            return
+            d.pop("updated_at")
+            d.pop("__class__")
+            types[args[0]](**d)
+        except:
+            print("** no instance found **")
 
+    def default(self, line):
+        """default behavior method"""
+        import re
+        import ast
+        js = {}
+        methods = {'all': self.do_all, 'show': self.do_show,
+                   'destroy': self.do_destroy, 'update': self.do_update}
+        ln = re.split('[.,()]', line)
+        if '{' in line:
+            js = ast.literal_eval(re.search('({.+})', line).group(0))
+            ln = ln[:3]
+        if len(ln) >= 2:
+            meth = ln.pop(1)
+        else:
+            print("*** Unknown syntax:", ln[0])
+            return
+        if meth == "show" or meth == "update":
+            ln[1] = ln[1].strip('"')
+        elif meth == "count":
+            print(models.count[ln[0]])
+            return
+        ln = " ".join(ln)
+        ln = ln.replace('\'', '"')
+        if meth in methods:
+            methods[meth](ln, **js)
 
 if __name__ == '__main__':
-    HBNBCommand().cmdloop()
+    console = HBNBCommand()
+    console.prompt = "(hbnb) "
+    console.cmdloop()
